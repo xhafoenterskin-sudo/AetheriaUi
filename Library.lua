@@ -293,6 +293,103 @@ local Library = {
         })
     end
 
+    Library.FontCache = {}
+    Library.FontBase = "https://raw.githubusercontent.com/xhafoenterskin-sudo/AetheriaUi/main/"
+    Library.FontFiles = { Purrfect = "Purrfect.ttf" }
+    Library.FontNames = { "Purrfect" }
+    local FontPack = {
+        "AbrilFatface-Regular.ttf", "Alegreya-Regular.ttf", "AlexBrush-Regular.ttf", "AlfaSlabOne-Regular.ttf",
+        "AmaticSC-Regular.ttf", "AnonymousPro-Regular.ttf", "Anton-Regular.ttf", "Arimo-Regular.ttf",
+        "Arvo-Regular.ttf", "Bangers-Regular.ttf", "Barlow-Regular.ttf", "BebasNeue-Regular.ttf",
+        "Bitter-Regular.ttf", "BodoniModa-Regular.ttf", "Bungee-Regular.ttf", "Cabin-Regular.ttf",
+        "Catamaran-Regular.ttf", "Caveat-Regular.ttf", "ChangaOne-Regular.ttf", "Cinzel-Regular.ttf",
+        "CinzelDecorative-Regular.ttf", "Comfortaa-Regular.ttf", "Cookie-Regular.ttf", "Courgette-Regular.ttf",
+        "Cousine-Regular.ttf", "CrimsonText-Regular.ttf", "DancingScript-Regular.ttf", "Domine-Regular.ttf",
+        "Dosis-Regular.ttf", "EBGaramond-Regular.ttf", "Exo2-Regular.ttf", "FiraCode-Regular.ttf",
+        "FiraSans-Regular.ttf", "FrankRuhlLibre-Regular.ttf", "Fredoka-Regular.ttf", "GreatVibes-Regular.ttf",
+        "Heebo-Regular.ttf", "Hind-Regular.ttf", "Inconsolata-Regular.ttf", "IndieFlower-Regular.ttf",
+        "Inter-Regular.ttf", "JosefinSans-Regular.ttf", "Kalam-Regular.ttf", "Kanit-Regular.ttf",
+        "Karla-Regular.ttf", "KaushanScript-Regular.ttf", "Lato-Regular.ttf", "Lobster-Regular.ttf",
+        "Lora-Regular.ttf", "Manrope-Regular.ttf", "MarckScript-Regular.ttf", "Montserrat-Regular.ttf",
+        "Mukta-Regular.ttf", "Mulish-Regular.ttf", "Neuton-Regular.ttf", "Nunito-Regular.ttf",
+        "OpenSans-Regular.ttf", "Oswald-Regular.ttf", "Overpass-Regular.ttf", "Oxygen-Regular.ttf",
+        "Pacifico-Regular.ttf", "Parisienne-Regular.ttf", "PassionOne-Regular.ttf", "PatuaOne-Regular.ttf",
+        "PlayfairDisplay-Regular.ttf", "Poppins-Regular.ttf", "Prata-Regular.ttf", "PressStart2P-Regular.ttf",
+        "Prompt-Regular.ttf", "Quicksand-Regular.ttf", "Raleway-Regular.ttf", "Righteous-Regular.ttf",
+        "Roboto-Regular.ttf", "RobotoCondensed-Regular.ttf", "RobotoMono-Regular.ttf", "Rubik-Regular.ttf",
+        "RussoOne-Regular.ttf", "Sacramento-Regular.ttf", "Signika-Regular.ttf", "SourceCodePro-Regular.ttf",
+        "SourceSans3-Regular.ttf", "SpaceMono-Regular.ttf", "SquadaOne-Regular.ttf", "TitanOne-Regular.ttf",
+        "VT323-Regular.ttf", "Vollkorn-Regular.ttf", "WorkSans-Regular.ttf",
+    }
+    for _, File in ipairs(FontPack) do
+        local Name = File:gsub("%-Regular%.ttf$", ""):gsub("%.ttf$", "")
+        Library.FontFiles[Name] = "Popular_100_Fonts/" .. File
+        Library.FontNames[#Library.FontNames + 1] = Name
+    end
+
+    function Library:LoadFace(Name)
+        if type(Name) ~= "string" or Name == "" then
+            return self.Font
+        end
+        local Cached = self.FontCache[Name]
+        if Cached then
+            return Cached
+        end
+        local File = self.FontFiles[Name]
+        if not File then
+            return self.Font
+        end
+        local Folder = self.Directory .. "/fonts"
+        local Ttf = Folder .. "/" .. Name .. ".ttf"
+        if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(Folder) then
+            makefolder(Folder)
+        end
+        if type(isfile) ~= "function" or not isfile(Ttf) then
+            writefile(Ttf, game:HttpGet(self.FontBase .. File))
+        end
+        local FaceFile = self.Directory .. self.Folders.Assets .. "/" .. Name .. ".font"
+        local Asset = getcustomasset(Ttf)
+        writefile(FaceFile, HttpService:JSONEncode({
+            name = Name,
+            faces = {
+                {
+                    name = Name,
+                    weight = 400,
+                    style = "Regular",
+                    assetId = Asset,
+                },
+            },
+        }))
+        local Face = Font.new(getcustomasset(FaceFile))
+        self.FontCache[Name] = Face
+        return Face
+    end
+
+    function Library:ApplyMenuFont(Name)
+        local Face = self:LoadFace(Name)
+        if not Face then
+            return
+        end
+        self.Font = Face
+        self.BoldFont = Face
+        local function Paint(Root)
+            if not Root then
+                return
+            end
+            for _, Object in ipairs(Root:GetDescendants()) do
+                if Object:IsA("TextLabel") or Object:IsA("TextButton") or Object:IsA("TextBox") then
+                    Object.FontFace = Face
+                    if Object.TextSize > 20 then
+                        Object.TextSize = 14
+                    end
+                end
+            end
+        end
+        if self.Holder and self.Holder.Instance then
+            Paint(self.Holder.Instance)
+        end
+    end
+
     Library.Exit = function(Self)
         for _, Connection in Library.Connections do 
             Connection:Disconnect()
@@ -752,10 +849,6 @@ local Library = {
 
         local Success, Result = Library:SafeCall(function()
             for Index, Value in Library.Flags do 
-                if tostring(Index):sub(1, 5) == "Theme" then
-                    continue
-                end
-
                 if type(Value) == "table" and Value.Key then
                     Config[Index] = {Key = tostring(Value.Key), Mode = Value.Mode}
                 elseif type(Value) == "table" and Value.Color then
@@ -783,10 +876,18 @@ local Library = {
         Library.LoadingConfig = true
 
         local function ApplyFlag(Index, Value)
-            if tostring(Index):sub(1, 5) == "Theme" then
-                return
-            end
+            local Name = tostring(Index)
             local SetFunction = Library.SetFlags[Index]
+            if type(Value) == "table" and Value.Color and Name:sub(1, 5) == "Theme" then
+                local Color = Value.Color
+                if type(Color) == "string" then
+                    Color = Color3.fromHex(Color)
+                end
+                local ThemeKey = Name:sub(6)
+                if Library.Theme[ThemeKey] ~= nil and typeof(Color) == "Color3" then
+                    Library:ChangeTheme(ThemeKey, Color)
+                end
+            end
             if type(SetFunction) ~= "function" then
                 return
             end
@@ -812,18 +913,43 @@ local Library = {
             end
         end
 
+        if Decoded.ThemePreset ~= nil then
+            SafeApply("ThemePreset", Decoded.ThemePreset)
+        end
+
         local KeyFlags = {}
+        local ThemeFlags = {}
         for Index, Value in Decoded do
-            if type(Value) == "table" and Value.Key ~= nil then
+            local Name = tostring(Index)
+            if Name:sub(1, 5) == "Theme" and Name ~= "ThemePreset" then
+                ThemeFlags[#ThemeFlags + 1] = Index
+            elseif type(Value) == "table" and Value.Key ~= nil then
                 KeyFlags[#KeyFlags + 1] = Index
-            else
+            elseif Name ~= "ThemePreset" then
                 SafeApply(Index, Value)
             end
+        end
+
+        for Index = 1, #ThemeFlags do
+            local Flag = ThemeFlags[Index]
+            SafeApply(Flag, Decoded[Flag])
         end
 
         for Index = 1, #KeyFlags do
             local Flag = KeyFlags[Index]
             SafeApply(Flag, Decoded[Flag])
+        end
+
+        for _, Item in Library.ThemingStuff do
+            if Item.Item and Item.Item.Parent then
+                for Property, Value in Item.Properties do
+                    if type(Value) == "string" and Library.Theme[Value] then
+                        Item.Item[Property] = Library.Theme[Value]
+                    elseif type(Value) == "function" then
+                        Item.Item[Property] = Value()
+                    end
+                end
+            end
         end
 
         Library.LoadingConfig = false
@@ -2547,26 +2673,20 @@ local Library = {
                 
                 local TextX = 8
                 if type(Icon) == "string" and Icon ~= "" then
-                    local Badge = Library:Create("TextLabel", {
+                    local Badge = Library:Create("ImageLabel", {
                         Name = "\0",
                         Parent = Items["Notification"].Instance,
-                        Text = "HIT",
-                        FontFace = Library.BoldFont,
-                        TextSize = Library.FontSize,
-                        TextColor3 = Color,
-                        BackgroundColor3 = Library.Theme["Element"],
-                        Size = UDim2.fromOffset(28, 16),
-                        Position = UDim2.fromOffset(8, 0),
+                        BackgroundTransparency = 1,
+                        Image = "rbxassetid://6031280882",
+                        ImageColor3 = Color,
+                        ScaleType = Enum.ScaleType.Fit,
+                        Size = UDim2.fromOffset(16, 16),
+                        Position = UDim2.fromOffset(4, 0),
                         BorderSizePixel = 0,
                         ZIndex = 102,
                     })
-                    Library:Create("UICorner", {
-                        Name = "\0",
-                        Parent = Badge.Instance,
-                        CornerRadius = UDim.new(1, 0),
-                    })
                     Items["Badge"] = Badge
-                    TextX = 42
+                    TextX = 26
                 end
                 Items["Text"] = Library:Create("TextLabel", {
                     Name = "\0",
@@ -2602,6 +2722,8 @@ local Library = {
                     Value.Instance.BackgroundTransparency = 1
                 elseif Value.Instance:IsA("TextLabel") then 
                     Value.Instance.TextTransparency = 1
+                elseif Value.Instance:IsA("ImageLabel") then
+                    Value.Instance.ImageTransparency = 1
                 elseif Value.Instance:IsA("UIStroke") then 
                     Value.Instance.Transparency = 1
                 end
@@ -2672,6 +2794,8 @@ local Library = {
                         Value:Tween({BackgroundTransparency = 0}, FadeInfo)
                     elseif Value.Instance:IsA("TextLabel") then 
                         Value:Tween({TextTransparency = 0}, FadeInfo)
+                    elseif Value.Instance:IsA("ImageLabel") then
+                        Value:Tween({ImageTransparency = 0}, FadeInfo)
                     elseif Value.Instance:IsA("UIStroke") then 
                         Value:Tween({Transparency = 0}, FadeInfo)
                     end
@@ -2696,6 +2820,8 @@ local Library = {
                             Value:Tween({BackgroundTransparency = 1}, FadeInfo)
                         elseif Value.Instance:IsA("TextLabel") then 
                             Value:Tween({TextTransparency = 1}, FadeInfo)
+                        elseif Value.Instance:IsA("ImageLabel") then
+                            Value:Tween({ImageTransparency = 1}, FadeInfo)
                         elseif Value.Instance:IsA("UIStroke") then 
                             Value:Tween({Transparency = 1}, FadeInfo)
                         end
@@ -2898,10 +3024,11 @@ local Library = {
                 Items["Sidebar"] = Library:Create("Frame", {
                     Name = "\0",
                     Parent = Items["MainFrame"].Instance,
-                    BackgroundColor3 = Library.Theme["Background"],
+                    BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Size = UDim2.new(0, 168, 1, 0)
-                }):AddToTheme({BackgroundColor3 = 'Background'})
+                    Position = UDim2.fromOffset(0, 14),
+                    Size = UDim2.new(0, 168, 1, -28)
+                })
 
                 Library:Create("Frame", {
                     Name = "\0",
@@ -2923,7 +3050,7 @@ local Library = {
                     TextXAlignment = Enum.TextXAlignment.Left,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Position = UDim2.fromOffset(24, 16),
+                    Position = UDim2.fromOffset(22, 4),
                     Size = UDim2.new(1, -40, 0, 22)
                 }):AddToTheme({TextColor3 = 'Text'})
 
@@ -2932,8 +3059,8 @@ local Library = {
                     Parent = Items["Sidebar"].Instance,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Position = UDim2.fromOffset(0, 44),
-                    Size = UDim2.new(1, -8, 1, -88),
+                    Position = UDim2.fromOffset(0, 32),
+                    Size = UDim2.new(1, -8, 1, -70),
                     CanvasSize = UDim2.new(),
                     AutomaticCanvasSize = Enum.AutomaticSize.Y,
                     ScrollBarThickness = 0,
@@ -3275,6 +3402,24 @@ local Library = {
                     CornerRadius = UDim.new(0, 6)
                 })
 
+                local PageIcons = {
+                    Combat = "rbxassetid://6034509993",
+                    Visuals = "rbxassetid://6031763426",
+                    Players = "rbxassetid://6034287594",
+                    Misc = "rbxassetid://6031280882",
+                    Settings = "rbxassetid://6031280882",
+                }
+                Library:Create("ImageLabel", {
+                    Name = "\0",
+                    Parent = Items["Inactive"].Instance,
+                    BackgroundTransparency = 1,
+                    Image = PageIcons[Page.Name] or "rbxassetid://6031280882",
+                    ImageColor3 = Library.Theme["Inactive Text"],
+                    ScaleType = Enum.ScaleType.Fit,
+                    Position = UDim2.fromOffset(6, 6),
+                    Size = UDim2.fromOffset(16, 16),
+                }):AddToTheme({ImageColor3 = "Inactive Text"})
+
                 Items["Title"] = Library:Create("TextLabel", {
                     Name = "\0",
                     FontFace = Library.Font,
@@ -3286,8 +3431,8 @@ local Library = {
                     TextYAlignment = Enum.TextYAlignment.Center,
                     BackgroundTransparency = 1,
                     BorderSizePixel = 0,
-                    Position = UDim2.fromOffset(8, 0),
-                    Size = UDim2.new(1, -12, 1, 0)
+                    Position = UDim2.fromOffset(26, 0),
+                    Size = UDim2.new(1, -32, 1, 0)
                 }):AddToTheme({TextColor3 = 'Inactive Text'})
 
                 Items["Page"] = Library:Create("Frame", {
@@ -3592,7 +3737,7 @@ local Library = {
                 NewPage.Position = UDim2.new(0, 0, 0, 0)
 
                 Items["Inactive"]:ChangeItemTheme({TextColor3 = "Accent"})
-                Items["Inactive"]:Tween({TextColor3 = Library.Theme.Accent}, SubTween)
+                Items["Inactive"].Instance.TextColor3 = Library.Theme.Accent
 
                 Page.Page.Current = Page
                 Page.Window.Items["CurrentPath"].Instance.Text = Page.Page.Name .. "  >  " .. Page.Name
@@ -3641,6 +3786,40 @@ local Library = {
                     CornerRadius = UDim.new(0, 14)
                 })
 
+                local SectionIcons = {
+                    aimbot = "rbxassetid://6034509993",
+                    ["silent aim"] = "rbxassetid://6031280882",
+                    manipulation = "rbxassetid://6034509993",
+                    triggerbot = "rbxassetid://6034509993",
+                    flick = "rbxassetid://6034509993",
+                    ragebot = "rbxassetid://6034509993",
+                    evasion = "rbxassetid://6031763426",
+                    movement = "rbxassetid://6034287594",
+                    extras = "rbxassetid://6031280882",
+                    exploits = "rbxassetid://6034509993",
+                    melee = "rbxassetid://6034509993",
+                    players = "rbxassetid://6034287594",
+                    colors = "rbxassetid://6031763426",
+                    numbers = "rbxassetid://6031280882",
+                    crosshair = "rbxassetid://6031280882",
+                    ["ui settings"] = "rbxassetid://6031280882",
+                }
+                local SectionIcon = SectionIcons[string.lower(Section.Name)]
+                local TextX = 12
+                if SectionIcon then
+                    Library:Create("ImageLabel", {
+                        Name = "\0",
+                        Parent = Items["Section"].Instance,
+                        BackgroundTransparency = 1,
+                        Image = SectionIcon,
+                        ImageColor3 = Library.Theme["Accent"],
+                        ScaleType = Enum.ScaleType.Fit,
+                        Position = UDim2.fromOffset(12, 13),
+                        Size = UDim2.fromOffset(14, 14),
+                        ZIndex = 2,
+                    }):AddToTheme({ImageColor3 = "Accent"})
+                    TextX = 30
+                end
                 Items["Text"] = Library:Create("TextLabel", {
                     Name = "\0",
                     FontFace = Library.Font,
@@ -3649,8 +3828,8 @@ local Library = {
                     TextColor3 = Library.Theme["Inactive Text"],
                     Text = Section.Name,
                     TextXAlignment = Enum.TextXAlignment.Left,
-                    Size = UDim2.new(1, -24, 0, 18),
-                    Position = UDim2.fromOffset(12, 12),
+                    Size = UDim2.new(1, -(TextX + 12), 0, 18),
+                    Position = UDim2.fromOffset(TextX, 12),
                     BorderSizePixel = 0,
                     BackgroundTransparency = 1,
                     ZIndex = 2
@@ -5540,6 +5719,23 @@ local Library = {
             end
 
             do
+                UISettingsSection:Dropdown({
+                    Name = "Menu font",
+                    Flag = "MenuFont",
+                    Items = Library.FontNames,
+                    Default = "Purrfect",
+                    Callback = function(Value)
+                        task.spawn(function()
+                            local Ok, Err = pcall(function()
+                                Library:ApplyMenuFont(Value)
+                            end)
+                            if not Ok then
+                                Library:Notification("font failed: " .. tostring(Err), 3, Color3.fromRGB(255, 80, 80))
+                            end
+                        end)
+                    end,
+                })
+
                 UISettingsSection:Label({Name = "Menu Bind"}):Keybind({
                     Flag = "MenuBind",
                     Mode = "Toggle",

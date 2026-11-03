@@ -365,6 +365,18 @@ local Library = {
         return Face
     end
 
+    function Library:PaintText(Object, Face)
+        if not Object or not Face then
+            return
+        end
+        if Object:IsA("TextLabel") or Object:IsA("TextButton") or Object:IsA("TextBox") then
+            Object.FontFace = Face
+            if Object.TextSize > 22 then
+                Object.TextSize = 14
+            end
+        end
+    end
+
     function Library:ApplyMenuFont(Name)
         local Face = self:LoadFace(Name)
         if not Face then
@@ -372,21 +384,36 @@ local Library = {
         end
         self.Font = Face
         self.BoldFont = Face
-        local function Paint(Root)
-            if not Root then
-                return
-            end
-            for _, Object in ipairs(Root:GetDescendants()) do
-                if Object:IsA("TextLabel") or Object:IsA("TextButton") or Object:IsA("TextBox") then
-                    Object.FontFace = Face
-                    if Object.TextSize > 20 then
-                        Object.TextSize = 14
-                    end
+        local Roots = {}
+        if self.Holder and self.Holder.Instance then
+            Roots[#Roots + 1] = self.Holder.Instance
+        end
+        if self.NotifHolder then
+            Roots[#Roots + 1] = self.NotifHolder.Instance or self.NotifHolder
+        end
+        if self.UnusedHolder and self.UnusedHolder.Instance then
+            Roots[#Roots + 1] = self.UnusedHolder.Instance
+        end
+        for _, Root in ipairs(Roots) do
+            if typeof(Root) == "Instance" then
+                self:PaintText(Root, Face)
+                for _, Object in ipairs(Root:GetDescendants()) do
+                    self:PaintText(Object, Face)
                 end
             end
         end
-        if self.Holder and self.Holder.Instance then
-            Paint(self.Holder.Instance)
+        if not self.FontHooked and self.Holder and self.Holder.Instance then
+            self.FontHooked = true
+            self.Holder.Instance.DescendantAdded:Connect(function(Object)
+                if Library.Font then
+                    Library:PaintText(Object, Library.Font)
+                end
+                task.defer(function()
+                    if Library.Font and Object.Parent then
+                        Library:PaintText(Object, Library.Font)
+                    end
+                end)
+            end)
         end
     end
 
@@ -447,6 +474,13 @@ local Library = {
             end
 
             Data.Instance[Index] = Property
+        end
+
+        if (Class == "TextLabel" or Class == "TextButton" or Class == "TextBox") and Library.Font then
+            Data.Instance.FontFace = Library.Font
+            if Data.Instance.TextSize > 22 then
+                Data.Instance.TextSize = 14
+            end
         end
 
         return setmetatable(Data, Library)
@@ -3982,19 +4016,19 @@ local Library = {
             end
 
             function Toggle:Set(Bool)
-                Toggle.Value = Bool 
-
-                if Bool then 
-                    Items["Indicator"]:ChangeItemTheme({BackgroundColor3 = "Accent"})
+                Toggle.Value = Bool
+                local OnColor = Bool and "Accent" or "Element"
+                local TextColor = Bool and "Text" or "Inactive Text"
+                Items["Indicator"]:ChangeItemTheme({BackgroundColor3 = OnColor})
+                Items["Text"]:ChangeItemTheme({TextColor3 = TextColor})
+                if Library.LoadingConfig then
+                    Items["Indicator"].Instance.BackgroundColor3 = Library.Theme[OnColor]
+                    Items["Text"].Instance.TextColor3 = Library.Theme[TextColor]
+                elseif Bool then
                     Items["Indicator"]:Tween({BackgroundColor3 = Library.Theme.Accent})
-
-                    Items["Text"]:ChangeItemTheme({TextColor3 = "Text"})
                     Items["Text"]:Tween({TextColor3 = Library.Theme.Text})
                 else
-                    Items["Indicator"]:ChangeItemTheme({BackgroundColor3 = "Element"})
                     Items["Indicator"]:Tween({BackgroundColor3 = Library.Theme.Element})
-                    
-                    Items["Text"]:ChangeItemTheme({TextColor3 = "Inactive Text"})
                     Items["Text"]:Tween({TextColor3 = Library.Theme["Inactive Text"]})
                 end
 
@@ -5725,14 +5759,12 @@ local Library = {
                     Items = Library.FontNames,
                     Default = "Purrfect",
                     Callback = function(Value)
-                        task.spawn(function()
-                            local Ok, Err = pcall(function()
-                                Library:ApplyMenuFont(Value)
-                            end)
-                            if not Ok then
-                                Library:Notification("font failed: " .. tostring(Err), 3, Color3.fromRGB(255, 80, 80))
-                            end
+                        local Ok, Err = pcall(function()
+                            Library:ApplyMenuFont(Value)
                         end)
+                        if not Ok then
+                            Library:Notification("font failed: " .. tostring(Err), 3, Color3.fromRGB(255, 80, 80))
+                        end
                     end,
                 })
 
